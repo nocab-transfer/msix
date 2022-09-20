@@ -3,7 +3,7 @@ import 'package:args/args.dart' show ArgParser, ArgResults;
 import 'package:cli_util/cli_logging.dart' show Logger;
 import 'package:get_it/get_it.dart';
 import 'package:package_config/package_config.dart' show findPackageConfig;
-import 'package:path/path.dart' show extension, basename;
+import 'package:path/path.dart' show basename, extension, join;
 import 'package:pub_semver/pub_semver.dart';
 import 'package:yaml/yaml.dart' show YamlMap, loadYaml;
 import 'extensions.dart';
@@ -19,8 +19,7 @@ class Configuration {
   String? identityName;
   String? msixVersion;
   String? appDescription;
-  String buildFilesFolder =
-      '${Directory.current.path}/build/windows/runner/Release';
+  String buildFilesFolder = '${Directory.current.path}/build/windows/runner/Release';
   String? certificatePath;
   String? certificatePassword;
   String? publisher;
@@ -51,14 +50,24 @@ class Configuration {
   bool trimLogo = true;
   bool createWithDebugBuildFiles = false;
   bool enableAtStartup = false;
+
+  // Experimental features
+  String? contextMenuDirectoryId;
+  String? contextMenuDirectoryClsid;
+  String? contextMenuBackgroundId;
+  String? contextMenuBackgroundClsid;
+  String? contextMenuFilesId;
+  String? contextMenuFilesClsid;
+  String? comSurrogateServerClassId;
+  String? comSurrogateServerName;
+  bool enableContextMenu = false;
+
   Iterable<String>? appUriHandlerHosts;
   Iterable<String>? languages;
   String get defaultsIconsFolderPath => '$msixAssetsPath/icons';
   String get msixToolkitPath => '$msixAssetsPath/MSIX-Toolkit';
-  String get msixPath =>
-      '${outputPath ?? buildFilesFolder}/${outputName ?? appName}.msix';
-  String get appInstallerPath =>
-      '$publishFolderPath/${basename(msixPath).replaceAll('.msix', '.appinstaller')}';
+  String get msixPath => '${outputPath ?? buildFilesFolder}/${outputName ?? appName}.msix';
+  String get appInstallerPath => '$publishFolderPath/${basename(msixPath).replaceAll('.msix', '.appinstaller')}';
   String pubspecYamlPath = "pubspec.yaml";
   String osMinVersion = '10.0.17763.0';
 
@@ -72,48 +81,35 @@ class Configuration {
     appName = pubspec['name'];
     appDescription = pubspec['description'];
     var yaml = pubspec['msix_config'] ?? YamlMap();
-    msixVersion =
-        _args['version'] ?? yaml['msix_version'] ?? _getPubspecVersion(pubspec);
+    msixVersion = _args['version'] ?? yaml['msix_version'] ?? _getPubspecVersion(pubspec);
     certificatePath = _args['certificate-path'] ?? yaml['certificate_path'];
-    certificatePassword = _args['certificate-password'] ??
-        yaml['certificate_password']?.toString();
+    certificatePassword = _args['certificate-password'] ?? yaml['certificate_password']?.toString();
     outputPath = _args['output-path'] ?? yaml['output_path'];
     outputName = _args['output-name'] ?? yaml['output_name'];
     executionAlias = _args['execution-alias'] ?? yaml['execution_alias'];
-    if (_args['sign-msix'].toString() == 'false' ||
-        yaml['sign_msix']?.toString().toLowerCase() == 'false') {
+    if (_args['sign-msix'].toString() == 'false' || yaml['sign_msix']?.toString().toLowerCase() == 'false') {
       signMsix = false;
     }
-    if (_args['install-certificate'].toString() == 'false' ||
-        yaml['install_certificate']?.toString().toLowerCase() == 'false') {
+    if (_args['install-certificate'].toString() == 'false' || yaml['install_certificate']?.toString().toLowerCase() == 'false') {
       installCert = false;
     }
-    if (_args['build-windows'].toString() == 'false' ||
-        yaml['build_windows']?.toString().toLowerCase() == 'false') {
+    if (_args['build-windows'].toString() == 'false' || yaml['build_windows']?.toString().toLowerCase() == 'false') {
       buildWindows = false;
     }
-    if (_args['trim-logo'].toString() == 'false' ||
-        yaml['trim_logo']?.toString().toLowerCase() == 'false') {
+    if (_args['trim-logo'].toString() == 'false' || yaml['trim_logo']?.toString().toLowerCase() == 'false') {
       trimLogo = false;
     }
-    store = _args.wasParsed('store') ||
-        yaml['store']?.toString().toLowerCase() == 'true';
-    createWithDebugBuildFiles = _args.wasParsed('debug') ||
-        yaml['debug']?.toString().toLowerCase() == 'true';
+    store = _args.wasParsed('store') || yaml['store']?.toString().toLowerCase() == 'true';
+    createWithDebugBuildFiles = _args.wasParsed('debug') || yaml['debug']?.toString().toLowerCase() == 'true';
     if (createWithDebugBuildFiles) {
       buildFilesFolder = buildFilesFolder.replaceFirst('Release', 'Debug');
     }
     displayName = _args['display-name'] ?? yaml['display_name'];
-    publisherName =
-        _args['publisher-display-name'] ?? yaml['publisher_display_name'];
+    publisherName = _args['publisher-display-name'] ?? yaml['publisher_display_name'];
     publisher = _args['publisher'] ?? yaml['publisher'];
     identityName = _args['identity-name'] ?? yaml['identity_name'];
     logoPath = _args['logo-path'] ?? yaml['logo_path'];
-    signToolOptions = (_args['signtool-options'] ?? yaml['signtool_options'])
-        ?.toString()
-        .split(' ')
-        .where((o) => o.trim().isNotEmpty)
-        .toList();
+    signToolOptions = (_args['signtool-options'] ?? yaml['signtool_options'])?.toString().split(' ').where((o) => o.trim().isNotEmpty).toList();
     protocolActivation = _getProtocolsActivation(yaml);
     fileExtension = _args['file-extension'] ?? yaml['file_extension'];
     if (fileExtension != null && !fileExtension!.startsWith('.')) {
@@ -123,44 +119,35 @@ class Configuration {
     capabilities = _args['capabilities'] ?? yaml['capabilities'];
     languages = _getLanguages(yaml);
     appUriHandlerHosts = _getAppUriHandlerHosts(yaml);
-    enableAtStartup = _args.wasParsed('enable-at-startup') ||
-        yaml['enable_at_startup']?.toString().toLowerCase() == 'true';
+    enableAtStartup = _args.wasParsed('enable-at-startup') || yaml['enable_at_startup']?.toString().toLowerCase() == 'true';
+
+    // Experimental features
+    contextMenuDirectoryId = _args['context-menu-directory-id'] ?? yaml['context_menu_directory_id'];
+    contextMenuDirectoryClsid = _args['context-menu-directory-clsid'] ?? yaml['context_menu_directory_clsid'];
+    contextMenuBackgroundId = _args['context-menu-background-id'] ?? yaml['context_menu_background_id'];
+    contextMenuBackgroundClsid = _args['context-menu-background-clsid'] ?? yaml['context_menu_background_clsid'];
+    contextMenuFilesId = _args['context-menu-files-id'] ?? yaml['context_menu_files_id'];
+    contextMenuFilesClsid = _args['context-menu-files-clsid'] ?? yaml['context_menu_files_clsid'];
+    comSurrogateServerClassId = _args['com-surrogate-server-class-id'] ?? yaml['com_surrogate_server_class_id'];
+    comSurrogateServerName = _args['com-surrogate-server-name'] ?? yaml['com_surrogate_server_name'];
 
     // toast activator configurations
     var toastActivatorYaml = yaml['toast_activator'] ?? YamlMap();
 
-    toastActivatorCLSID = _args['toast-activator-clsid'] ??
-        toastActivatorYaml['clsid']?.toString();
-    toastActivatorArguments = _args['toast-activator-arguments'] ??
-        toastActivatorYaml['arguments']?.toString() ??
-        '----AppNotificationActivationServer';
-    toastActivatorDisplayName = _args['toast-activator-display-name'] ??
-        toastActivatorYaml['display_name']?.toString() ??
-        'Toast activator';
+    toastActivatorCLSID = _args['toast-activator-clsid'] ?? toastActivatorYaml['clsid']?.toString();
+    toastActivatorArguments = _args['toast-activator-arguments'] ?? toastActivatorYaml['arguments']?.toString() ?? '----AppNotificationActivationServer';
+    toastActivatorDisplayName = _args['toast-activator-display-name'] ?? toastActivatorYaml['display_name']?.toString() ?? 'Toast activator';
 
     // app installer configurations
     var installerYaml = yaml['app_installer'] ?? YamlMap();
 
-    publishFolderPath =
-        _args['publish-folder-path'] ?? installerYaml['publish_folder_path'];
-    hoursBetweenUpdateChecks = int.parse(_args['hours-between-update-checks'] ??
-        installerYaml['hours_between_update_checks']?.toString() ??
-        '0');
+    publishFolderPath = _args['publish-folder-path'] ?? installerYaml['publish_folder_path'];
+    hoursBetweenUpdateChecks = int.parse(_args['hours-between-update-checks'] ?? installerYaml['hours_between_update_checks']?.toString() ?? '0');
     if (hoursBetweenUpdateChecks < 0) hoursBetweenUpdateChecks = 0;
-    automaticBackgroundTask = _args.wasParsed('automatic-background-task') ||
-        installerYaml['automatic_background_task']?.toString().toLowerCase() ==
-            'true';
-    updateBlocksActivation = _args.wasParsed('update-blocks-activation') ||
-        installerYaml['update_blocks_activation']?.toString().toLowerCase() ==
-            'true';
-    showPrompt = _args.wasParsed('show-prompt') ||
-        installerYaml['show_prompt']?.toString().toLowerCase() == 'true';
-    forceUpdateFromAnyVersion =
-        _args.wasParsed('force-update-from-any-version') ||
-            installerYaml['force_update_from_any_version']
-                    ?.toString()
-                    .toLowerCase() ==
-                'true';
+    automaticBackgroundTask = _args.wasParsed('automatic-background-task') || installerYaml['automatic_background_task']?.toString().toLowerCase() == 'true';
+    updateBlocksActivation = _args.wasParsed('update-blocks-activation') || installerYaml['update_blocks_activation']?.toString().toLowerCase() == 'true';
+    showPrompt = _args.wasParsed('show-prompt') || installerYaml['show_prompt']?.toString().toLowerCase() == 'true';
+    forceUpdateFromAnyVersion = _args.wasParsed('force-update-from-any-version') || installerYaml['force_update_from_any_version']?.toString().toLowerCase() == 'true';
   }
 
   /// Validate the configuration values and set default values
@@ -175,8 +162,7 @@ class Configuration {
     if (displayName.isNull) displayName = cleanAppName;
     if (identityName.isNull) {
       if (store) {
-        _logger.stderr(
-            'identity name is empty, check "msix_config: identity_name" at pubspec.yaml');
+        _logger.stderr('identity name is empty, check "msix_config: identity_name" at pubspec.yaml');
         throw 'you can find your store "identity_name" in https://partner.microsoft.com/en-us/dashboard > Product > Product identity > Package/Identity/Name';
       } else {
         identityName = 'com.flutter.$cleanAppName';
@@ -188,21 +174,18 @@ class Configuration {
     }
     if (publisherName.isNull) {
       if (store) {
-        _logger.stderr(
-            'publisher display name is empty, check "msix_config: publisher_display_name" at pubspec.yaml');
+        _logger.stderr('publisher display name is empty, check "msix_config: publisher_display_name" at pubspec.yaml');
         throw 'you can find your store "publisher_display_name" in https://partner.microsoft.com/en-us/dashboard > Product > Product identity > Package/Properties/PublisherDisplayName';
       } else {
         publisherName = identityName;
       }
     }
     if (signMsix == false && publisher.isNullOrEmpty) {
-      _logger.stderr(
-          'when sign_msix is false, you must provide the publisher value at "msix_config: publisher" in the pubspec.yaml file');
+      _logger.stderr('when sign_msix is false, you must provide the publisher value at "msix_config: publisher" in the pubspec.yaml file');
       exit(-1);
     }
     if (store && publisher.isNullOrEmpty) {
-      _logger.stderr(
-          'publisher is empty, check "msix_config: publisher" at pubspec.yaml');
+      _logger.stderr('publisher is empty, check "msix_config: publisher" at pubspec.yaml');
       throw 'you can find your store "publisher" in https://partner.microsoft.com/en-us/dashboard > Product > Product identity > Package/Properties/Publisher';
     }
     if (msixVersion.isNull) msixVersion = '1.0.0.0';
@@ -227,8 +210,7 @@ class Configuration {
           throw 'The file certificate not found in: $certificatePath, check "msix_config: certificate_path" at pubspec.yaml';
         }
 
-        if (extension(certificatePath!) == '.pfx' &&
-            certificatePassword.isNull) {
+        if (extension(certificatePath!) == '.pfx' && certificatePassword.isNull) {
           throw 'Certificate password is empty, check "msix_config: certificate_password" at pubspec.yaml';
         }
       }
@@ -241,25 +223,50 @@ class Configuration {
     if (!['x86', 'x64'].contains(architecture)) {
       throw 'Architecture can be "x86" or "x64", check "msix_config: architecture" at pubspec.yaml';
     }
+
+    // contextmenudirectoryid and contextmenudirectoryclsid must be set together
+    if (contextMenuDirectoryId != null && contextMenuDirectoryClsid == null) {
+      throw 'context-menu-directory-clsid is empty, check "msix_config: context_menu_directory_clsid" at pubspec.yaml';
+    }
+
+    if (contextMenuDirectoryClsid != null && contextMenuDirectoryId == null) {
+      throw 'context-menu-directory-id is empty, check "msix_config: context_menu_directory_id" at pubspec.yaml';
+    }
+
+    // contextmenubackgroundid and contextmenubackgroundclsid must be set together
+    if (contextMenuBackgroundId != null && contextMenuBackgroundClsid == null) {
+      throw 'context-menu-background-clsid is empty, check "msix_config: context_menu_background_clsid" at pubspec.yaml';
+    }
+
+    if (contextMenuBackgroundClsid != null && contextMenuBackgroundId == null) {
+      throw 'context-menu-background-id is empty, check "msix_config: context_menu_background_id" at pubspec.yaml';
+    }
+
+    // contextmenufilesid and contextmenufilesclsid must be set together
+    if (contextMenuFilesId != null && contextMenuFilesClsid == null) {
+      throw 'context-menu-files-clsid is empty, check "msix_config: context_menu_files-clsid" at pubspec.yaml';
+    }
+
+    if (contextMenuFilesClsid != null && contextMenuFilesId == null) {
+      throw 'context-menu-files-id is empty, check "msix_config: context_menu_files-id" at pubspec.yaml';
+    }
+
+    if (contextMenuDirectoryId != null && contextMenuBackgroundId != null && contextMenuFilesId != null) {
+      if (comSurrogateServerClassId == null || comSurrogateServerName == null) throw 'com_surrogate_server_class_id and com_surrogate_server_name must be set';
+      if (!(await File(join(buildFilesFolder, comSurrogateServerName)).exists())) throw 'The file com surrogate server not found in: $buildFilesFolder, check "msix_config: com_surrogate_server_name" at pubspec.yaml';
+      enableContextMenu = true;
+    }
   }
 
   /// Validate "flutter build windows" output files
   Future<void> validateWindowsBuildFiles() async {
     _logger.trace('validating build files');
 
-    if (!await Directory(buildFilesFolder).exists() ||
-        !await Directory(buildFilesFolder)
-            .list()
-            .any((file) => file.path.endsWith('.exe'))) {
+    if (!await Directory(buildFilesFolder).exists() || !await Directory(buildFilesFolder).list().any((file) => file.path.endsWith('.exe'))) {
       throw 'Build files not found at $buildFilesFolder, first run "flutter build windows" then try again';
     }
 
-    executableFileName = await Directory(buildFilesFolder)
-        .list()
-        .firstWhere((file) =>
-            file.path.endsWith('.exe') &&
-            !file.path.contains('PSFLauncher64.exe'))
-        .then((file) => basename(file.path));
+    executableFileName = await Directory(buildFilesFolder).list().firstWhere((file) => file.path.endsWith('.exe') && !file.path.contains('PSFLauncher64.exe')).then((file) => basename(file.path));
   }
 
   /// Declare and parse the cli arguments
@@ -301,7 +308,16 @@ class Configuration {
       ..addFlag('automatic-background-task')
       ..addFlag('update-blocks-activation')
       ..addFlag('show-prompt')
-      ..addFlag('force-update-from-any-version');
+      ..addFlag('force-update-from-any-version')
+      // context menu
+      ..addOption('context-menu-directory-id')
+      ..addOption('context-menu-directory-clsid')
+      ..addOption('context-menu-background-id')
+      ..addOption('context-menu-background-clsid')
+      ..addOption('context-menu-files-id')
+      ..addOption('context-menu-files-clsid')
+      ..addOption('com-surrogate-server-class-id')
+      ..addOption('com-surrogate-server-name');
 
     // exclude -v (verbose) from the arguments
     _args = parser.parse(args.where((arg) => arg != '-v'));
@@ -310,11 +326,8 @@ class Configuration {
   Future<void> validateAppInstallerConfigValues() async {
     _logger.trace('validating app installer config values');
 
-    if (publishFolderPath.isNullOrEmpty ||
-        !await Directory(publishFolderPath!).exists()) {
-      _logger.stderr(
-          'publish folder path is not exists, check "app_installer: publish_folder_path" at pubspec.yaml'
-              .red);
+    if (publishFolderPath.isNullOrEmpty || !await Directory(publishFolderPath!).exists()) {
+      _logger.stderr('publish folder path is not exists, check "app_installer: publish_folder_path" at pubspec.yaml'.red);
       exit(-1);
     } else {
       publishFolderPath = Uri.decodeFull(publishFolderPath!);
@@ -328,11 +341,8 @@ class Configuration {
       throw 'Failed to locate or read package config.';
     }
 
-    var msixPackage =
-        packagesConfig.packages.firstWhere((package) => package.name == "msix");
-    var path =
-        msixPackage.packageUriRoot.toString().replaceAll('file:///', '') +
-            'assets';
+    var msixPackage = packagesConfig.packages.firstWhere((package) => package.name == "msix");
+    var path = msixPackage.packageUriRoot.toString().replaceAll('file:///', '') + 'assets';
 
     msixAssetsPath = Uri.decodeFull(path);
   }
@@ -349,12 +359,7 @@ class Configuration {
     if (yaml['version'] == null) return null;
     try {
       final pubspecVersion = Version.parse(yaml['version']);
-      return [
-        pubspecVersion.major,
-        pubspecVersion.minor,
-        pubspecVersion.patch,
-        0
-      ].join('.');
+      return [pubspecVersion.major, pubspecVersion.minor, pubspecVersion.patch, 0].join('.');
     } on FormatException {
       _logger.stderr(
         'Warning: Could not parse Pubspec version. No version provided.',
@@ -364,31 +369,12 @@ class Configuration {
   }
 
   /// Get the languages list
-  Iterable<String>? _getLanguages(dynamic config) =>
-      ((_args['languages'] ?? config['languages']) as String?)
-          ?.split(',')
-          .map((e) => e.trim())
-          .where((element) => element.isNotEmpty);
+  Iterable<String>? _getLanguages(dynamic config) => ((_args['languages'] ?? config['languages']) as String?)?.split(',').map((e) => e.trim()).where((element) => element.isNotEmpty);
 
   /// Get the app uri handler hosts list
-  Iterable<String>? _getAppUriHandlerHosts(dynamic config) =>
-      ((_args['app-uri-handler-hosts'] ?? config['app_uri_handler_hosts'])
-              as String?)
-          ?.split(',')
-          .map((e) => e.trim())
-          .where((element) => element.isNotEmpty);
+  Iterable<String>? _getAppUriHandlerHosts(dynamic config) => ((_args['app-uri-handler-hosts'] ?? config['app_uri_handler_hosts']) as String?)?.split(',').map((e) => e.trim()).where((element) => element.isNotEmpty);
 
   /// Get the protocol activation list
   Iterable<String> _getProtocolsActivation(dynamic config) =>
-      ((_args['protocol-activation'] ?? config['protocol_activation'])
-              as String?)
-          ?.split(',')
-          .map((protocol) => protocol
-              .trim()
-              .toLowerCase()
-              .replaceAll('://', '')
-              .replaceAll(':/', '')
-              .replaceAll(':', ''))
-          .where((protocol) => protocol.isNotEmpty) ??
-      [];
+      ((_args['protocol-activation'] ?? config['protocol_activation']) as String?)?.split(',').map((protocol) => protocol.trim().toLowerCase().replaceAll('://', '').replaceAll(':/', '').replaceAll(':', '')).where((protocol) => protocol.isNotEmpty) ?? [];
 }
