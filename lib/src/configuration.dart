@@ -1,12 +1,13 @@
 import 'dart:io';
-import 'package:args/args.dart' show ArgParser, ArgResults;
-import 'package:cli_util/cli_logging.dart' show Logger;
+import 'package:args/args.dart';
+import 'package:cli_util/cli_logging.dart';
 import 'package:get_it/get_it.dart';
-import 'package:package_config/package_config.dart' show findPackageConfig;
-import 'package:path/path.dart' show basename, extension, join;
+import 'package:package_config/package_config.dart';
+import 'package:path/path.dart';
 import 'package:pub_semver/pub_semver.dart';
-import 'package:yaml/yaml.dart' show YamlMap, loadYaml;
-import 'extensions.dart';
+import 'package:yaml/yaml.dart';
+import 'command_line_converter.dart';
+import 'method_extensions.dart';
 
 /// Handles loading and validating the configuration values
 class Configuration {
@@ -77,10 +78,10 @@ class Configuration {
   Future<void> getConfigValues() async {
     _parseCliArguments(_arguments);
     await _getMsixAssetsFolderPath();
-    var pubspec = await _getPubspec();
+    dynamic pubspec = await _getPubspec();
     appName = pubspec['name'];
     appDescription = pubspec['description'];
-    var yaml = pubspec['msix_config'] ?? YamlMap();
+    dynamic yaml = pubspec['msix_config'] ?? YamlMap();
     msixVersion = _args['version'] ?? yaml['msix_version'] ?? _getPubspecVersion(pubspec);
     certificatePath = _args['certificate-path'] ?? yaml['certificate_path'];
     certificatePassword = _args['certificate-password'] ?? yaml['certificate_password']?.toString();
@@ -109,7 +110,13 @@ class Configuration {
     publisher = _args['publisher'] ?? yaml['publisher'];
     identityName = _args['identity-name'] ?? yaml['identity_name'];
     logoPath = _args['logo-path'] ?? yaml['logo_path'];
-    signToolOptions = (_args['signtool-options'] ?? yaml['signtool_options'])?.toString().split(' ').where((o) => o.trim().isNotEmpty).toList();
+    final String? signToolOptionsConfig = (_args['signtool-options'] ?? yaml['signtool_options'])?.toString();
+    if (signToolOptionsConfig != null && signToolOptionsConfig.isNotEmpty) {
+      CommandLineConverter commandLineConverter = CommandLineConverter();
+      signToolOptions = commandLineConverter.convert(signToolOptionsConfig);
+    }
+
+    //CommandLineConverter
     protocolActivation = _getProtocolsActivation(yaml);
     fileExtension = _args['file-extension'] ?? yaml['file_extension'];
     if (fileExtension != null && !fileExtension!.startsWith('.')) {
@@ -132,22 +139,26 @@ class Configuration {
     comSurrogateServerName = _args['com-surrogate-server-name'] ?? yaml['com_surrogate_server_name'];
 
     // toast activator configurations
-    var toastActivatorYaml = yaml['toast_activator'] ?? YamlMap();
+    dynamic toastActivatorYaml = yaml['toast_activator'] ?? YamlMap();
 
     toastActivatorCLSID = _args['toast-activator-clsid'] ?? toastActivatorYaml['clsid']?.toString();
-    toastActivatorArguments = _args['toast-activator-arguments'] ?? toastActivatorYaml['arguments']?.toString() ?? '----AppNotificationActivationServer';
+    toastActivatorArguments =
+        _args['toast-activator-arguments'] ?? toastActivatorYaml['arguments']?.toString() ?? '----AppNotificationActivationServer';
     toastActivatorDisplayName = _args['toast-activator-display-name'] ?? toastActivatorYaml['display_name']?.toString() ?? 'Toast activator';
 
     // app installer configurations
-    var installerYaml = yaml['app_installer'] ?? YamlMap();
+    dynamic installerYaml = yaml['app_installer'] ?? YamlMap();
 
     publishFolderPath = _args['publish-folder-path'] ?? installerYaml['publish_folder_path'];
     hoursBetweenUpdateChecks = int.parse(_args['hours-between-update-checks'] ?? installerYaml['hours_between_update_checks']?.toString() ?? '0');
     if (hoursBetweenUpdateChecks < 0) hoursBetweenUpdateChecks = 0;
-    automaticBackgroundTask = _args.wasParsed('automatic-background-task') || installerYaml['automatic_background_task']?.toString().toLowerCase() == 'true';
-    updateBlocksActivation = _args.wasParsed('update-blocks-activation') || installerYaml['update_blocks_activation']?.toString().toLowerCase() == 'true';
+    automaticBackgroundTask =
+        _args.wasParsed('automatic-background-task') || installerYaml['automatic_background_task']?.toString().toLowerCase() == 'true';
+    updateBlocksActivation =
+        _args.wasParsed('update-blocks-activation') || installerYaml['update_blocks_activation']?.toString().toLowerCase() == 'true';
     showPrompt = _args.wasParsed('show-prompt') || installerYaml['show_prompt']?.toString().toLowerCase() == 'true';
-    forceUpdateFromAnyVersion = _args.wasParsed('force-update-from-any-version') || installerYaml['force_update_from_any_version']?.toString().toLowerCase() == 'true';
+    forceUpdateFromAnyVersion =
+        _args.wasParsed('force-update-from-any-version') || installerYaml['force_update_from_any_version']?.toString().toLowerCase() == 'true';
   }
 
   /// Validate the configuration values and set default values
@@ -158,7 +169,7 @@ class Configuration {
       throw 'App name is empty, check the general \'name:\' property at pubspec.yaml';
     }
     if (appDescription.isNull) appDescription = appName;
-    var cleanAppName = appName!.replaceAll('_', '');
+    String cleanAppName = appName!.replaceAll('_', '');
     if (displayName.isNull) displayName = cleanAppName;
     if (identityName.isNull) {
       if (store) {
@@ -210,7 +221,7 @@ class Configuration {
           throw 'The file certificate not found in: $certificatePath, check "msix_config: certificate_path" at pubspec.yaml';
         }
 
-        if (extension(certificatePath!) == '.pfx' && certificatePassword.isNull) {
+        if (extension(certificatePath!).toLowerCase() == '.pfx' && certificatePassword.isNull) {
           throw 'Certificate password is empty, check "msix_config: certificate_password" at pubspec.yaml';
         }
       }
@@ -252,8 +263,10 @@ class Configuration {
     }
 
     if (contextMenuDirectoryId != null && contextMenuBackgroundId != null && contextMenuFilesId != null) {
-      if (comSurrogateServerClassId == null || comSurrogateServerName == null) throw 'com_surrogate_server_class_id and com_surrogate_server_name must be set';
-      if (!(await File(join(buildFilesFolder, comSurrogateServerName)).exists())) throw 'The file com surrogate server not found in: $buildFilesFolder, check "msix_config: com_surrogate_server_name" at pubspec.yaml';
+      if (comSurrogateServerClassId == null || comSurrogateServerName == null)
+        throw 'com_surrogate_server_class_id and com_surrogate_server_name must be set';
+      if (!(await File(join(buildFilesFolder, comSurrogateServerName)).exists()))
+        throw 'The file com surrogate server not found in: $buildFilesFolder, check "msix_config: com_surrogate_server_name" at pubspec.yaml';
       enableContextMenu = true;
     }
   }
@@ -266,14 +279,17 @@ class Configuration {
       throw 'Build files not found at $buildFilesFolder, first run "flutter build windows" then try again';
     }
 
-    executableFileName = await Directory(buildFilesFolder).list().firstWhere((file) => file.path.endsWith('.exe') && !file.path.contains('PSFLauncher64.exe')).then((file) => basename(file.path));
+    executableFileName = await Directory(buildFilesFolder)
+        .list()
+        .firstWhere((file) => file.path.endsWith('.exe') && !file.path.contains('PSFLauncher64.exe'))
+        .then((file) => basename(file.path));
   }
 
   /// Declare and parse the cli arguments
   void _parseCliArguments(List<String> args) {
     _logger.trace('parsing cli arguments');
 
-    var parser = ArgParser()
+    ArgParser parser = ArgParser()
       ..addOption('certificate-password', abbr: 'p')
       ..addOption('certificate-path', abbr: 'c')
       ..addOption('version')
@@ -336,21 +352,21 @@ class Configuration {
 
   /// Get the assets folder path from the .packages file
   Future<void> _getMsixAssetsFolderPath() async {
-    var packagesConfig = await findPackageConfig(Directory.current);
+    PackageConfig? packagesConfig = await findPackageConfig(Directory.current);
     if (packagesConfig == null) {
       throw 'Failed to locate or read package config.';
     }
 
-    var msixPackage = packagesConfig.packages.firstWhere((package) => package.name == "msix");
-    var path = msixPackage.packageUriRoot.toString().replaceAll('file:///', '') + 'assets';
+    Package msixPackage = packagesConfig.packages.firstWhere((package) => package.name == "msix");
+    String path = msixPackage.packageUriRoot.toString().replaceAll('file:///', '') + 'assets';
 
     msixAssetsPath = Uri.decodeFull(path);
   }
 
   /// Get pubspec.yaml content
   dynamic _getPubspec() async {
-    var pubspecString = await File(pubspecYamlPath).readAsString();
-    var pubspec = loadYaml(pubspecString);
+    String pubspecString = await File(pubspecYamlPath).readAsString();
+    dynamic pubspec = loadYaml(pubspecString);
     return pubspec;
   }
 
@@ -358,7 +374,7 @@ class Configuration {
     // Existing behavior is to put null if no version, so matching
     if (yaml['version'] == null) return null;
     try {
-      final pubspecVersion = Version.parse(yaml['version']);
+      final Version pubspecVersion = Version.parse(yaml['version']);
       return [pubspecVersion.major, pubspecVersion.minor, pubspecVersion.patch, 0].join('.');
     } on FormatException {
       _logger.stderr(
@@ -369,12 +385,20 @@ class Configuration {
   }
 
   /// Get the languages list
-  Iterable<String>? _getLanguages(dynamic config) => ((_args['languages'] ?? config['languages']) as String?)?.split(',').map((e) => e.trim()).where((element) => element.isNotEmpty);
+  Iterable<String>? _getLanguages(dynamic config) =>
+      ((_args['languages'] ?? config['languages']) as String?)?.split(',').map((e) => e.trim()).where((element) => element.isNotEmpty);
 
   /// Get the app uri handler hosts list
-  Iterable<String>? _getAppUriHandlerHosts(dynamic config) => ((_args['app-uri-handler-hosts'] ?? config['app_uri_handler_hosts']) as String?)?.split(',').map((e) => e.trim()).where((element) => element.isNotEmpty);
+  Iterable<String>? _getAppUriHandlerHosts(dynamic config) => ((_args['app-uri-handler-hosts'] ?? config['app_uri_handler_hosts']) as String?)
+      ?.split(',')
+      .map((e) => e.trim())
+      .where((element) => element.isNotEmpty);
 
   /// Get the protocol activation list
   Iterable<String> _getProtocolsActivation(dynamic config) =>
-      ((_args['protocol-activation'] ?? config['protocol_activation']) as String?)?.split(',').map((protocol) => protocol.trim().toLowerCase().replaceAll('://', '').replaceAll(':/', '').replaceAll(':', '')).where((protocol) => protocol.isNotEmpty) ?? [];
+      ((_args['protocol-activation'] ?? config['protocol_activation']) as String?)
+          ?.split(',')
+          .map((protocol) => protocol.trim().toLowerCase().replaceAll('://', '').replaceAll(':/', '').replaceAll(':', ''))
+          .where((protocol) => protocol.isNotEmpty) ??
+      [];
 }
