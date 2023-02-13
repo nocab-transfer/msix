@@ -30,6 +30,7 @@ class Configuration {
   String? logoPath;
   String? executableFileName;
   List<String>? signToolOptions;
+  List<String>? windowsBuildArgs;
   late Iterable<String> protocolActivation;
   String? executionAlias;
   String? fileExtension;
@@ -114,6 +115,12 @@ class Configuration {
     if (signToolOptionsConfig != null && signToolOptionsConfig.isNotEmpty) {
       CommandLineConverter commandLineConverter = CommandLineConverter();
       signToolOptions = commandLineConverter.convert(signToolOptionsConfig);
+    }
+
+    final String? windowsBuildArgsConfig = (_args['windows-build-args'] ?? yaml['windows_build_args'])?.toString();
+    if (windowsBuildArgsConfig != null && windowsBuildArgsConfig.isNotEmpty) {
+      CommandLineConverter commandLineConverter = CommandLineConverter();
+      windowsBuildArgs = commandLineConverter.convert(windowsBuildArgsConfig);
     }
 
     //CommandLineConverter
@@ -263,10 +270,12 @@ class Configuration {
     }
 
     if (contextMenuDirectoryId != null && contextMenuBackgroundId != null && contextMenuFilesId != null) {
-      if (comSurrogateServerClassId == null || comSurrogateServerName == null)
+      if (comSurrogateServerClassId == null || comSurrogateServerName == null) {
         throw 'com_surrogate_server_class_id and com_surrogate_server_name must be set';
-      if (!(await File(join(buildFilesFolder, comSurrogateServerName)).exists()))
+      }
+      if (!(await File(join(buildFilesFolder, comSurrogateServerName)).exists())) {
         throw 'The file com surrogate server not found in: $buildFilesFolder, check "msix_config: com_surrogate_server_name" at pubspec.yaml';
+      }
       enableContextMenu = true;
     }
   }
@@ -301,6 +310,7 @@ class Configuration {
       ..addOption('output-path', abbr: 'o')
       ..addOption('output-name', abbr: 'n')
       ..addOption('signtool-options')
+      ..addOption('windows-build-args')
       ..addOption('protocol-activation')
       ..addOption('execution-alias')
       ..addOption('file-extension', abbr: 'f')
@@ -358,7 +368,7 @@ class Configuration {
     }
 
     Package msixPackage = packagesConfig.packages.firstWhere((package) => package.name == "msix");
-    String path = msixPackage.packageUriRoot.toString().replaceAll('file:///', '') + 'assets';
+    String path = '${msixPackage.packageUriRoot.toString().replaceAll('file:///', '')}assets';
 
     msixAssetsPath = Uri.decodeFull(path);
   }
